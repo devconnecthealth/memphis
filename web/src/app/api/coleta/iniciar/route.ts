@@ -1,6 +1,6 @@
 import { isoDoPortal } from '../../../../lib/datas'
 import { Portal } from '../../../../lib/portal'
-import { credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
+import { contaValida, credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -12,11 +12,12 @@ const DATA = /^\d{4}-\d{2}-\d{2}$/
 export async function POST(req: Request) {
   try {
     await exigirLogin(req)
-    const { inicio, fim } = await req.json().catch(() => ({}))
+    const { inicio, fim, conta: contaBody } = await req.json().catch(() => ({}))
+    const conta = contaValida(contaBody)
     if (!DATA.test(inicio) || !DATA.test(fim) || fim < inicio || (Date.parse(fim) - Date.parse(inicio)) / 86400000 > 366)
       throw new HttpError(422, 'Período inválido (fim antes do início ou maior que 1 ano).')
 
-    const { user, pass } = credenciaisPortal()
+    const { user, pass } = credenciaisPortal(conta)
     const portal = new Portal()
     await portal.login(user, pass)
     const itens = await portal.listar(inicio, fim)
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
       hawb: i.hawb,
       destinatario: i.destinatario || null,
       criado_em: isoDoPortal(i.criado),
+      conta,
     }))
     for (let k = 0; k < linhas.length; k += 500) {
       const { error } = await db.from('memphis').upsert(linhas.slice(k, k + 500), { onConflict: 'hawb' })

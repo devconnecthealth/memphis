@@ -10,7 +10,14 @@ import { diasSemMovimento } from '../lib/status'
 type Linha = {
   hawb: string; destinatario: string | null; criado_em: string | null; status: string
   ultimo_checkpoint_em: string | null; ultimo_checkpoint_desc: string | null; coletado_em: string | null
+  conta: string
 }
+
+const CONTAS = [
+  { id: 'AnaRubia', rotulo: 'AnaRubia' }, { id: 'MVD', rotulo: 'Uruguai' }, { id: 'DXB', rotulo: 'Dubai' },
+  { id: 'AMD', rotulo: 'Índia' }, { id: 'SHA', rotulo: 'China' },
+]
+const rotuloConta = (id: string) => CONTAS.find((c) => c.id === id)?.rotulo || id
 
 const LOTE = 4
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }) : '—')
@@ -49,6 +56,7 @@ export default function Lista() {
   const [dataFim, setDataFim] = useState('')
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState('')
+  const [filtroConta, setFiltroConta] = useState('')
   const [limite, setLimite] = useState(3)
   const [auto, setAuto] = useState(false)
   const [perm, setPerm] = useState<string>('unsupported')
@@ -68,9 +76,9 @@ export default function Lista() {
     const [i, f] = intervalo(periodo, dataIni, dataFim)
     if (!i || !f || f < i) return
     const { data, error } = await supabase.from('memphis')
-      .select('hawb,destinatario,criado_em,status,ultimo_checkpoint_em,ultimo_checkpoint_desc,coletado_em')
+      .select('hawb,destinatario,criado_em,status,ultimo_checkpoint_em,ultimo_checkpoint_desc,coletado_em,conta')
       .gte('criado_em', `${i}T00:00:00-03:00`).lte('criado_em', `${f}T23:59:59-03:00`)
-      .order('criado_em', { ascending: false }).limit(2000)
+      .order('criado_em', { ascending: false }).limit(5000)
     if (error) setErro('Não foi possível carregar os dados.')
     else setLinhas((data as Linha[]) || [])
     setCarregando(false)
@@ -89,11 +97,20 @@ export default function Lista() {
     return d !== null && d >= limite
   }), [limite])
   const parados = useMemo(() => paradosDe(linhas), [linhas, paradosDe])
-  const ehParado = (h: Linha) => parados.includes(h)
+  const setParados = useMemo(() => new Set(parados), [parados])
+  const ehParado = (h: Linha) => setParados.has(h)
 
   const lista = useMemo(() => linhas
     .filter((h) => `${h.hawb} ${h.destinatario || ''}`.toLowerCase().includes(busca.toLowerCase()))
-    .filter((h) => !filtro || (filtro === '__parado' ? parados.includes(h) : h.status === filtro)), [linhas, busca, filtro, parados])
+    .filter((h) => !filtroConta || h.conta === filtroConta)
+    .filter((h) => !filtro || (filtro === '__parado' ? setParados.has(h) : h.status === filtro)), [linhas, busca, filtro, filtroConta, setParados])
+
+  const [pagina, setPagina] = useState(1)
+  const [porPagina, setPorPagina] = useState(25)
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / porPagina))
+  const paginaAtual = Math.min(pagina, totalPaginas)
+  const visiveis = useMemo(() => lista.slice((paginaAtual - 1) * porPagina, paginaAtual * porPagina), [lista, paginaAtual, porPagina])
+  useEffect(() => { setPagina(1) }, [busca, filtro, filtroConta, periodo, dataIni, dataFim, porPagina])
 
   const atualizadoEm = useMemo(() => linhas.map((l) => l.coletado_em).filter(Boolean).sort().pop() || null, [linhas])
 
@@ -103,12 +120,24 @@ export default function Lista() {
     setErro('')
     setColetando(true)
     try {
-      const { total, fila } = await api('/api/coleta/iniciar', { inicio: ini, fim })
-      setProgresso([0, fila.length])
-      for (let k = 0; k < fila.length; k += LOTE) {
-        await api('/api/coleta/lote', { itens: fila.slice(k, k + LOTE) })
-        setProgresso([Math.min(k + LOTE, fila.length), fila.length])
+      let total = 0
+      const falhas: string[] = []
+      for (const c of CONTAS) {
+        try {
+          const r = await api('/api/coleta/iniciar', { inicio: ini, fim, conta: c.id })
+          const fila: { hawb: string; url: string }[] = r.fila
+          total += r.total
+          setProgresso([0, fila.length])
+          for (let k = 0; k < fila.length; k += LOTE) {
+            await api('/api/coleta/lote', { itens: fila.slice(k, k + LOTE), conta: c.id })
+            setProgresso([Math.min(k + LOTE, fila.length), fila.length])
+          }
+        } catch (e) {
+          if ((e as { status?: number }).status === 401) throw e
+          falhas.push(`${c.rotulo}: ${(e as Error).message}`)
+        }
       }
+      if (falhas.length) setErro(`Falha em: ${falhas.join(' | ')}`)
       const novas = (await carregar()) || []
       if (total >= 0 && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         const p = paradosDe(novas).length
@@ -167,6 +196,10 @@ export default function Lista() {
           </>
         )}
         <input className="campo busca" placeholder="Buscar HAWB ou destinatário" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <select className="select" value={filtroConta} onChange={(e) => setFiltroConta(e.target.value)}>
+          <option value="">Todas as contas</option>
+          {CONTAS.map((c) => <option key={c.id} value={c.id}>{c.rotulo}</option>)}
+        </select>
         <select className="select" value={filtro} onChange={(e) => setFiltro(e.target.value)}>
           <option value="">Todos os status</option>
           <option>Em trânsito</option>
@@ -195,14 +228,15 @@ export default function Lista() {
       ) : (
         <div className="card tabela">
           <table>
-            <thead><tr><th>HAWB</th><th>Destinatário</th><th>Criado em</th><th>Último checkpoint</th><th>Status</th></tr></thead>
+            <thead><tr><th>HAWB</th><th>Destinatário</th><th>Conta</th><th>Criado em</th><th>Último checkpoint</th><th>Status</th></tr></thead>
             <tbody>
-              {lista.map((h) => {
+              {visiveis.map((h) => {
                 const d = diasSemMovimento(h.status, h.ultimo_checkpoint_em, h.criado_em)
                 return (
                   <tr key={h.hawb} className={ehParado(h) ? 'parado' : ''}>
                     <td><Link href={`/hawb/${encodeURIComponent(h.hawb)}`}>{h.hawb}</Link></td>
                     <td>{h.destinatario || '—'}</td>
+                    <td className="caption">{rotuloConta(h.conta)}</td>
                     <td className="caption">{fmt(h.criado_em)}</td>
                     <td>
                       {h.ultimo_checkpoint_desc ? (<><div className="caption">{h.ultimo_checkpoint_desc}</div><div className="muted fino">{fmt(h.ultimo_checkpoint_em)}</div></>) : <span className="muted">—</span>}
@@ -216,6 +250,18 @@ export default function Lista() {
               })}
             </tbody>
           </table>
+          <div className="alerta-cfg muted caption" style={{ justifyContent: 'space-between' }}>
+            <span>{(paginaAtual - 1) * porPagina + 1}–{Math.min(paginaAtual * porPagina, lista.length)} de {lista.length}</span>
+            <span>
+              <select className="select peq" value={porPagina} onChange={(e) => setPorPagina(Number(e.target.value))}>
+                {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n} por página</option>)}
+              </select>
+              {' '}
+              <button className="btn-ghost" disabled={paginaAtual <= 1} onClick={() => setPagina(paginaAtual - 1)}>‹ Anterior</button>
+              {' '}Página {paginaAtual} de {totalPaginas}{' '}
+              <button className="btn-ghost" disabled={paginaAtual >= totalPaginas} onClick={() => setPagina(paginaAtual + 1)}>Próxima ›</button>
+            </span>
+          </div>
         </div>
       )}
     </>

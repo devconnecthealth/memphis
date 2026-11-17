@@ -3,7 +3,7 @@ import { Portal } from '../../../../lib/portal'
 import { BASE } from '../../../../lib/parse'
 import { derivarStatus } from '../../../../lib/status'
 import { traduzir } from '../../../../lib/traducao'
-import { credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
+import { contaValida, credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -15,7 +15,8 @@ const PREFIXO = `${BASE}/Houses/EditByIdentifier`
 export async function POST(req: Request) {
   try {
     await exigirLogin(req)
-    const { itens } = await req.json().catch(() => ({ itens: null }))
+    const { itens, conta: contaBody } = await req.json().catch(() => ({ itens: null }))
+    const conta = contaValida(contaBody)
     if (!Array.isArray(itens) || !itens.length || itens.length > MAX_LOTE) throw new HttpError(422, 'Lote inválido.')
     // Só aceita URLs do próprio portal (evita usar o servidor para chamar outros destinos).
     for (const i of itens) {
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
         throw new HttpError(422, 'Lote inválido.')
     }
 
-    const { user, pass } = credenciaisPortal()
+    const { user, pass } = credenciaisPortal(conta)
     const portal = new Portal()
     await portal.login(user, pass)
     const db = supabaseAdmin()

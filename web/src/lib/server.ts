@@ -39,6 +39,23 @@ export function erroResposta(e: unknown): Response {
   return Response.json({ erro: 'Falha ao consultar o portal Memphis (verifique credenciais e conexão).' }, { status: 502 })
 }
 
-export function credenciaisPortal() {
-  return { user: env('MEMPHIS_USER'), pass: env('MEMPHIS_PASS') }
+export const CONTAS = [
+  { id: 'AnaRubia', rotulo: 'AnaRubia', userEnv: 'MEMPHIS_USER', passEnv: 'MEMPHIS_PASS' },
+  { id: 'MVD', rotulo: 'Uruguai', userEnv: 'MEMPHIS_USER_MVD', passEnv: 'MEMPHIS_PASS_MVD' },
+  { id: 'DXB', rotulo: 'Dubai', userEnv: 'MEMPHIS_USER_DXB', passEnv: 'MEMPHIS_PASS_DXB' },
+  { id: 'AMD', rotulo: 'Índia', userEnv: 'MEMPHIS_USER_AMD', passEnv: 'MEMPHIS_PASS_AMD' },
+  { id: 'SHA', rotulo: 'China', userEnv: 'MEMPHIS_USER_SHA', passEnv: 'MEMPHIS_PASS_SHA' },
+] as const
+
+export function contaValida(id: unknown): string {
+  if (id === undefined || id === null) return 'AnaRubia'
+  const c = CONTAS.find((x) => x.id === id)
+  if (!c) throw new HttpError(422, 'Conta inválida.')
+  return c.id
+}
+
+export function credenciaisPortal(contaId: string = 'AnaRubia') {
+  const c = CONTAS.find((x) => x.id === contaId)
+  if (!c) throw new HttpError(422, 'Conta inválida.')
+  return { user: env(c.userEnv), pass: env(c.passEnv) }
 }
