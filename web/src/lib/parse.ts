@@ -8,7 +8,7 @@ export type ItemLista = { hawb: string; criado: string; destinatario: string; ur
 
 /** Lê uma página da lista de HAWBs. Só pega número, data e o NOME da pessoa destinatária
  *  (o <th> da linha). Endereço, CEP, cidade e CPF nunca são lidos. */
-export function parseLista(html: string): { itens: ItemLista[]; totalPaginas: number } {
+export function parseLista(html: string, base: string = BASE): { itens: ItemLista[]; totalPaginas: number } {
   const $ = cheerio.load(html)
   const total = parseInt($('#TotalPages').attr('value') || '1', 10)
   const itens: ItemLista[] = []
@@ -22,7 +22,7 @@ export function parseLista(html: string): { itens: ItemLista[]; totalPaginas: nu
       hawb: a.text().trim().replace(/[- ]+$/, '').trim(),
       criado: celulaCriado.text().replace(/\s+/g, ' ').trim(),
       destinatario: $(tr).find('th').first().text().replace(/\s+/g, ' ').trim(),
-      url: new URL(a.attr('href')!, BASE).toString(),
+      url: new URL(a.attr('href')!, base).toString(),
     })
   })
   return { itens, totalPaginas: Number.isFinite(total) && total > 0 ? total : 1 }

@@ -1,15 +1,14 @@
 import { isoDoPortal } from '../../../../lib/datas'
 import { Portal } from '../../../../lib/portal'
-import { BASE } from '../../../../lib/parse'
 import { derivarStatus } from '../../../../lib/status'
 import { traduzir } from '../../../../lib/traducao'
-import { contaValida, credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
+import { baseDaConta, contaValida, credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
 const MAX_LOTE = 6
-const PREFIXO = `${BASE}/Houses/EditByIdentifier`
+const CAMINHO = '/Houses/EditByIdentifier'
 
 /** Passo 2 (repetido pelo navegador): lê os checkpoints de um lote pequeno de HAWBs. */
 export async function POST(req: Request) {
@@ -18,14 +17,15 @@ export async function POST(req: Request) {
     const { itens, conta: contaBody } = await req.json().catch(() => ({ itens: null }))
     const conta = contaValida(contaBody)
     if (!Array.isArray(itens) || !itens.length || itens.length > MAX_LOTE) throw new HttpError(422, 'Lote inválido.')
+    const base = baseDaConta(conta)
     // Só aceita URLs do próprio portal (evita usar o servidor para chamar outros destinos).
     for (const i of itens) {
-      if (typeof i?.hawb !== 'string' || typeof i?.url !== 'string' || !i.url.startsWith(PREFIXO))
+      if (typeof i?.hawb !== 'string' || typeof i?.url !== 'string' || !i.url.startsWith(base + CAMINHO))
         throw new HttpError(422, 'Lote inválido.')
     }
 
     const { user, pass } = credenciaisPortal(conta)
-    const portal = new Portal()
+    const portal = new Portal(base)
     await portal.login(user, pass)
     const db = supabaseAdmin()
 

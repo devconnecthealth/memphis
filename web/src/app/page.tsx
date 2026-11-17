@@ -15,7 +15,7 @@ type Linha = {
 
 const CONTAS = [
   { id: 'AnaRubia', rotulo: 'AnaRubia' }, { id: 'MVD', rotulo: 'Uruguai' }, { id: 'DXB', rotulo: 'Dubai' },
-  { id: 'AMD', rotulo: 'Índia' }, { id: 'SHA', rotulo: 'China' },
+  { id: 'AMD', rotulo: 'Índia' }, { id: 'SHA', rotulo: 'China' }, { id: 'CBR', rotulo: 'Currier Brasil' },
 ]
 const rotuloConta = (id: string) => CONTAS.find((c) => c.id === id)?.rotulo || id
 

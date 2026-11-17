@@ -9,6 +9,8 @@ const UA = 'Mozilla/5.0 (monitor-remessas Connect Health)'
 export class Portal {
   private cookies = new Map<string, string>()
 
+  constructor(private base: string = BASE) {}
+
   private guardar(res: Response) {
     for (const c of res.headers.getSetCookie()) {
       const [par] = c.split(';')
@@ -39,7 +41,7 @@ export class Portal {
   }
 
   async login(user: string, pass: string) {
-    const { html, url } = await this.req(`${BASE}/Account/Login`)
+    const { html, url } = await this.req(`${this.base}/Account/Login`)
     const $ = cheerio.load(html)
     const form = $('form').first()
     if (!form.length) throw new Error('formulário de login não encontrado')
@@ -57,7 +59,7 @@ export class Portal {
 
   /** Lista os HAWBs criados entre inicio e fim (yyyy-mm-dd). */
   async listar(inicio: string, fim: string): Promise<ItemLista[]> {
-    const { html, url } = await this.req(`${BASE}/Houses`)
+    const { html, url } = await this.req(`${this.base}/Houses`)
     const $ = cheerio.load(html)
     const form = $('#frmHousesIndex')
     if (!form.length) throw new Error('frmHousesIndex não encontrado')
@@ -70,7 +72,7 @@ export class Portal {
     for (let pagina = 1; ; pagina++) {
       payload.PageNumber = String(pagina)
       const r = await this.req(action, { method: 'POST', body: new URLSearchParams(payload) })
-      const { itens, totalPaginas } = parseLista(r.html)
+      const { itens, totalPaginas } = parseLista(r.html, this.base)
       todos.push(...itens)
       if (pagina >= totalPaginas || pagina >= 50) break
     }

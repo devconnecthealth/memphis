@@ -1,6 +1,6 @@
 import { isoDoPortal } from '../../../../lib/datas'
 import { Portal } from '../../../../lib/portal'
-import { contaValida, credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
+import { baseDaConta, contaValida, credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
       throw new HttpError(422, 'Período inválido (fim antes do início ou maior que 1 ano).')
 
     const { user, pass } = credenciaisPortal(conta)
-    const portal = new Portal()
+    const portal = new Portal(baseDaConta(conta))
     await portal.login(user, pass)
     const itens = await portal.listar(inicio, fim)
 

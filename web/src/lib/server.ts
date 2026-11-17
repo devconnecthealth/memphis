@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { BASE } from './parse'
 
 export class HttpError extends Error {
   constructor(public status: number, msg: string) { super(msg) }
@@ -45,6 +46,7 @@ export const CONTAS = [
   { id: 'DXB', rotulo: 'Dubai', userEnv: 'MEMPHIS_USER_DXB', passEnv: 'MEMPHIS_PASS_DXB' },
   { id: 'AMD', rotulo: 'Índia', userEnv: 'MEMPHIS_USER_AMD', passEnv: 'MEMPHIS_PASS_AMD' },
   { id: 'SHA', rotulo: 'China', userEnv: 'MEMPHIS_USER_SHA', passEnv: 'MEMPHIS_PASS_SHA' },
+  { id: 'CBR', rotulo: 'Currier Brasil', userEnv: 'CBTI_USER', passEnv: 'CBTI_PASS', base: 'https://cbti.licons.pe' },
 ] as const
 
 export function contaValida(id: unknown): string {
@@ -52,6 +54,12 @@ export function contaValida(id: unknown): string {
   const c = CONTAS.find((x) => x.id === id)
   if (!c) throw new HttpError(422, 'Conta inválida.')
   return c.id
+}
+
+/** Endereço do portal da conta (Memphis por padrão). */
+export function baseDaConta(contaId: string): string {
+  const c = CONTAS.find((x) => x.id === contaId) as { base?: string } | undefined
+  return c?.base || BASE
 }
 
 export function credenciaisPortal(contaId: string = 'AnaRubia') {
