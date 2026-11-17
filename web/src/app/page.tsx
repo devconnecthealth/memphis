@@ -10,13 +10,14 @@ import { diasSemMovimento } from '../lib/status'
 type Linha = {
   hawb: string; destinatario: string | null; criado_em: string | null; status: string
   ultimo_checkpoint_em: string | null; ultimo_checkpoint_desc: string | null; coletado_em: string | null
-  conta: string
+  conta: string; contas: string[] | null
 }
 
 const CONTAS = [
-  { id: 'AnaRubia', rotulo: 'AnaRubia' }, { id: 'MVD', rotulo: 'Uruguai' }, { id: 'DXB', rotulo: 'Dubai' },
+  { id: 'AnaRubia', rotulo: 'Ana Rubia' }, { id: 'MVD', rotulo: 'Uruguai' }, { id: 'DXB', rotulo: 'Dubai' },
   { id: 'AMD', rotulo: 'Índia' }, { id: 'SHA', rotulo: 'China' }, { id: 'CBR', rotulo: 'Currier Brasil' },
 ]
+const contasDe = (h: { conta: string; contas: string[] | null }) => (h.contas?.length ? h.contas : [h.conta])
 const rotuloConta = (id: string) => CONTAS.find((c) => c.id === id)?.rotulo || id
 
 const LOTE = 4
@@ -76,7 +77,7 @@ export default function Lista() {
     const [i, f] = intervalo(periodo, dataIni, dataFim)
     if (!i || !f || f < i) return
     const { data, error } = await supabase.from('memphis')
-      .select('hawb,destinatario,criado_em,status,ultimo_checkpoint_em,ultimo_checkpoint_desc,coletado_em,conta')
+      .select('hawb,destinatario,criado_em,status,ultimo_checkpoint_em,ultimo_checkpoint_desc,coletado_em,conta,contas')
       .gte('criado_em', `${i}T00:00:00-03:00`).lte('criado_em', `${f}T23:59:59-03:00`)
       .order('criado_em', { ascending: false }).limit(5000)
     if (error) setErro('Não foi possível carregar os dados.')
@@ -102,7 +103,7 @@ export default function Lista() {
 
   const lista = useMemo(() => linhas
     .filter((h) => `${h.hawb} ${h.destinatario || ''}`.toLowerCase().includes(busca.toLowerCase()))
-    .filter((h) => !filtroConta || h.conta === filtroConta)
+    .filter((h) => !filtroConta || contasDe(h).includes(filtroConta))
     .filter((h) => !filtro || (filtro === '__parado' ? setParados.has(h) : h.status === filtro)), [linhas, busca, filtro, filtroConta, setParados])
 
   const [pagina, setPagina] = useState(1)
@@ -120,26 +121,34 @@ export default function Lista() {
     setErro('')
     setColetando(true)
     try {
-      let total = 0
       const falhas: string[] = []
-      for (const c of CONTAS) {
+      let fatal: unknown = null
+      let totalFila = 0, feitos = 0
+      // Todas as contas rodam ao mesmo tempo (portais diferentes); a tela é recarregada conforme chegam dados.
+      await Promise.all(CONTAS.map(async (c) => {
         try {
           const r = await api('/api/coleta/iniciar', { inicio: ini, fim, conta: c.id })
           const fila: { hawb: string; url: string }[] = r.fila
-          total += r.total
-          setProgresso([0, fila.length])
+          totalFila += fila.length
+          setProgresso([feitos, totalFila])
+          void carregar() // já mostra as remessas novas desta conta
           for (let k = 0; k < fila.length; k += LOTE) {
-            await api('/api/coleta/lote', { itens: fila.slice(k, k + LOTE), conta: c.id })
-            setProgresso([Math.min(k + LOTE, fila.length), fila.length])
+            if (fatal) return
+            const lote = fila.slice(k, k + LOTE)
+            await api('/api/coleta/lote', { itens: lote, conta: c.id })
+            feitos += lote.length
+            setProgresso([feitos, totalFila])
+            if ((k / LOTE) % 3 === 2) void carregar()
           }
         } catch (e) {
-          if ((e as { status?: number }).status === 401) throw e
-          falhas.push(`${c.rotulo}: ${(e as Error).message}`)
+          if ((e as { status?: number }).status === 401) fatal = e
+          else falhas.push(`${c.rotulo}: ${(e as Error).message}`)
         }
-      }
+      }))
+      if (fatal) throw fatal
       if (falhas.length) setErro(`Falha em: ${falhas.join(' | ')}`)
       const novas = (await carregar()) || []
-      if (total >= 0 && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         const p = paradosDe(novas).length
         if (p) new Notification('Remessas sem movimentação', { body: `${p} remessa${p > 1 ? 's' : ''} sem movimentação há ${limite}+ dias.` })
       }
@@ -196,10 +205,6 @@ export default function Lista() {
           </>
         )}
         <input className="campo busca" placeholder="Buscar HAWB ou destinatário" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <select className="select" value={filtroConta} onChange={(e) => setFiltroConta(e.target.value)}>
-          <option value="">Todas as contas</option>
-          {CONTAS.map((c) => <option key={c.id} value={c.id}>{c.rotulo}</option>)}
-        </select>
         <select className="select" value={filtro} onChange={(e) => setFiltro(e.target.value)}>
           <option value="">Todos os status</option>
           <option>Em trânsito</option>
@@ -210,6 +215,15 @@ export default function Lista() {
         <button className="btn" disabled={coletando || periodoInvalido} onClick={atualizar}>
           {coletando ? `Coletando… ${progresso[0]}/${progresso[1]}` : 'Buscar / Atualizar'}
         </button>
+      </div>
+
+      <div className="empresas" role="group" aria-label="Filtrar por empresa">
+        <button className={`pill ${!filtroConta ? 'ativa' : ''}`} onClick={() => setFiltroConta('')}>Todas <span>{linhas.length}</span></button>
+        {CONTAS.map((c) => (
+          <button key={c.id} className={`pill ${filtroConta === c.id ? 'ativa' : ''}`} onClick={() => setFiltroConta(filtroConta === c.id ? '' : c.id)}>
+            {c.rotulo} <span>{linhas.filter((h) => contasDe(h).includes(c.id)).length}</span>
+          </button>
+        ))}
       </div>
 
       <div className="alerta-cfg muted caption">
@@ -236,7 +250,7 @@ export default function Lista() {
                   <tr key={h.hawb} className={ehParado(h) ? 'parado' : ''}>
                     <td><Link href={`/hawb/${encodeURIComponent(h.hawb)}`}>{h.hawb}</Link></td>
                     <td>{h.destinatario || '—'}</td>
-                    <td className="caption">{rotuloConta(h.conta)}</td>
+                    <td className="caption">{contasDe(h).map(rotuloConta).join(', ')}</td>
                     <td className="caption">{fmt(h.criado_em)}</td>
                     <td>
                       {h.ultimo_checkpoint_desc ? (<><div className="caption">{h.ultimo_checkpoint_desc}</div><div className="muted fino">{fmt(h.ultimo_checkpoint_em)}</div></>) : <span className="muted">—</span>}

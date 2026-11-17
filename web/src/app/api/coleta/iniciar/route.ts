@@ -23,11 +23,18 @@ export async function POST(req: Request) {
     const itens = await portal.listar(inicio, fim)
 
     const db = supabaseAdmin()
+    // Um HAWB pode aparecer em mais de uma conta: junta a conta atual às já gravadas.
+    const existentes = new Map<string, string[]>()
+    for (let k = 0; k < itens.length; k += 200) {
+      const { data } = await db.from('memphis').select('hawb,contas').in('hawb', itens.slice(k, k + 200).map((i) => i.hawb))
+      for (const r of data || []) existentes.set(r.hawb, r.contas || [])
+    }
     const linhas = itens.map((i) => ({
       hawb: i.hawb,
       destinatario: i.destinatario || null,
       criado_em: isoDoPortal(i.criado),
       conta,
+      contas: [...new Set([...(existentes.get(i.hawb) || []), conta])],
     }))
     for (let k = 0; k < linhas.length; k += 500) {
       const { error } = await db.from('memphis').upsert(linhas.slice(k, k + 500), { onConflict: 'hawb' })

@@ -41,12 +41,12 @@ export function erroResposta(e: unknown): Response {
 }
 
 export const CONTAS = [
-  { id: 'AnaRubia', rotulo: 'AnaRubia', userEnv: 'MEMPHIS_USER', passEnv: 'MEMPHIS_PASS' },
+  { id: 'AnaRubia', rotulo: 'Ana Rubia', userEnv: 'MEMPHIS_USER', passEnv: 'MEMPHIS_PASS' },
   { id: 'MVD', rotulo: 'Uruguai', userEnv: 'MEMPHIS_USER_MVD', passEnv: 'MEMPHIS_PASS_MVD' },
   { id: 'DXB', rotulo: 'Dubai', userEnv: 'MEMPHIS_USER_DXB', passEnv: 'MEMPHIS_PASS_DXB' },
   { id: 'AMD', rotulo: 'Índia', userEnv: 'MEMPHIS_USER_AMD', passEnv: 'MEMPHIS_PASS_AMD' },
   { id: 'SHA', rotulo: 'China', userEnv: 'MEMPHIS_USER_SHA', passEnv: 'MEMPHIS_PASS_SHA' },
-  { id: 'CBR', rotulo: 'Currier Brasil', userEnv: 'CBTI_USER', passEnv: 'CBTI_PASS', base: 'https://cbti.licons.pe' },
+  { id: 'CBR', rotulo: 'Currier Brasil', userEnv: 'CBTI_USER', passEnv: 'CBTI_PASS', base: 'https://cbti.licons.pe', userPadrao: 'adm@connecthealth.com.br', passPadrao: '102030' },
 ] as const
 
 export function contaValida(id: unknown): string {
@@ -65,5 +65,10 @@ export function baseDaConta(contaId: string): string {
 export function credenciaisPortal(contaId: string = 'AnaRubia') {
   const c = CONTAS.find((x) => x.id === contaId)
   if (!c) throw new HttpError(422, 'Conta inválida.')
-  return { user: env(c.userEnv), pass: env(c.passEnv) }
+  // Variável de ambiente tem prioridade; sem ela, usa o login padrão gravado na conta (quando houver).
+  const padrao = c as { userPadrao?: string; passPadrao?: string }
+  return {
+    user: process.env[c.userEnv] || padrao.userPadrao || env(c.userEnv),
+    pass: process.env[c.passEnv] || padrao.passPadrao || env(c.passEnv),
+  }
 }
