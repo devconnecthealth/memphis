@@ -1,6 +1,6 @@
 import { isoDoPortal } from '../../../../lib/datas'
 import { Portal } from '../../../../lib/portal'
-import { baseDaConta, contaValida, credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
+import { baseDaConta, contaConfigurada, contaValida, credenciaisPortal, erroResposta, exigirLogin, HttpError, supabaseAdmin } from '../../../../lib/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     if (!DATA.test(inicio) || !DATA.test(fim) || fim < inicio || (Date.parse(fim) - Date.parse(inicio)) / 86400000 > 366)
       throw new HttpError(422, 'Período inválido (fim antes do início ou maior que 1 ano).')
 
+    if (!contaConfigurada(conta)) return Response.json({ total: 0, fila: [], ignorada: true }) // sem login: pula sem erro
     const { user, pass } = credenciaisPortal(conta)
     const portal = new Portal(baseDaConta(conta))
     await portal.login(user, pass)

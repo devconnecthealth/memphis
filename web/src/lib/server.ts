@@ -62,6 +62,13 @@ export function baseDaConta(contaId: string): string {
   return c?.base || BASE
 }
 
+/** A conta tem usuário e senha (variável de ambiente ou padrão)? Contas sem login são ignoradas na coleta. */
+export function contaConfigurada(contaId: string): boolean {
+  const c = CONTAS.find((x) => x.id === contaId) as { userEnv: string; passEnv: string; userPadrao?: string; passPadrao?: string } | undefined
+  if (!c) return false
+  return !!((process.env[c.userEnv] || c.userPadrao) && (process.env[c.passEnv] || c.passPadrao))
+}
+
 export function credenciaisPortal(contaId: string = 'AnaRubia') {
   const c = CONTAS.find((x) => x.id === contaId)
   if (!c) throw new HttpError(422, 'Conta inválida.')
